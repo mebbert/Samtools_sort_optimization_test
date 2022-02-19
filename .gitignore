@@ -1,0 +1,8 @@
+
+# Ignore all bam and related files
+*.bam*
+
+# Ignore all of the following files
+work
+
+
