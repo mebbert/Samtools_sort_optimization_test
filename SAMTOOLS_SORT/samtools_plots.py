@@ -15,7 +15,7 @@ with open('trace.txt', 'rt') as traces:
         if line.startswith('task_id'):
             continue
 
-        # print(line)
+        print(line)
 
         toks = line.strip().split('\t')
 
@@ -98,19 +98,19 @@ with open('trace.txt', 'rt') as traces:
 
 
 data = {
-        'Sample Prep': sample_type_list,
+        'Sample Prep (collated or aligned)': sample_type_list,
         'CPUs': cpus_list,
-        'Mem Per Thread': mem_per_thread_list,
-        'Duration': duration_list,
-        'Peak Total Mem': peak_memory_list,
-        'Peak Total vMem': peak_vmem_list
+        'Mem Per Thread (GB)': mem_per_thread_list,
+        'Duration (minutes)': duration_list,
+        'Peak Total Mem (GB)': peak_memory_list,
+        'Peak Total vMem (GB)': peak_vmem_list
        }
 df = pd.DataFrame(data)
 
 print(df)
 
-fig = px.scatter_3d(df, x='CPUs', y='Mem Per Thread', z='Duration',
-              color='Sample Prep', opacity=0.7)
+fig = px.scatter_3d(df, x='CPUs', y='Mem Per Thread (GB)', z='Duration (minutes)',
+              color='Sample Prep (collated or aligned)', opacity=0.7)
 
 fig.show()
 
