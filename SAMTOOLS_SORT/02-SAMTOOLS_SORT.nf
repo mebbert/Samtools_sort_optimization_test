@@ -11,104 +11,24 @@ input_files = [
               ]
 
 
-/*************************/
-/* Low memory per thread */
-/*************************/
-
-/*
- * Create list of CPUs and total memory to test. I want to test CPUs from 1
- * to 17 with step size == 2. The specified value ('18') is not inclusive. I'll
- * test memory (per thread) from 1 to 25 with step size == 2. The specified
- * value ('26') is not inclusive.
- */
-low_mem_and_cpu_list = []
-1.step(18, 2){
-    cpu ->
-        1.step(26, 2){
-            mem_per_thread -> 
-                low_mem_and_cpu_list.add( [cpu, mem_per_thread] )
-        }
-}
-
-Channel.from( low_mem_and_cpu_list )
-    | set { low_mem_and_cpu_ch } 
-
-
-
-/****************************/
-/* Medium memory per thread */
-/****************************/
-
-/*
- * Create list of CPUs and total memory to test. I want to test CPUS from 1
- * to 10 with step size == 3. The specified value ('11') is not inclusive. I'll
- * test memory from 27 to 41 with step size == 3. The specified value ('42')
- * is not inclusive.
- */
-med_mem_and_cpu_list = []
-1.step(11, 3){
-    cpu ->
-        27.step(42, 3){
-            mem_per_thread ->
-                med_mem_and_cpu_list.add( [cpu, mem_per_thread] )
-        }
-}
-
-
-
-Channel.from( med_mem_and_cpu_list )
-    | set { med_mem_and_cpu_ch }
-
-
-
-
-/**************************/
-/* High memory per thread */
-/**************************/
-
-/*
- * Create list of CPUs and total memory to test. I want to test CPUs from 1
- * to 4 with step size == 1. The specified value ('6') is not inclusive. I'll
- * test memory from 60 to 100 with step size == 10. The specified value ('101')
- * is not inclusive.
- */
-high_mem_and_cpu_list = []
-1.step(5, 1){
-    cpu ->
-        60.step(101, 10){
-            mem_per_thread ->
-                high_mem_and_cpu_list.add( [cpu, mem_per_thread] )
-        }
-}
-
-Channel.from( high_mem_and_cpu_list )
-    | set { high_mem_and_cpu_ch }
-
-
-
-/*
- * Concat all mem and CPU tuples
- */
-low_mem_and_cpu_ch
-    | concat( med_mem_and_cpu_ch )
-    | concat( high_mem_and_cpu_ch )
-    | set { all_mem_and_cpu_ch }
-
-
-/*
- * Combine input files with mem & CPU tuples
- */
-Channel.from(input_files)
-    | combine( all_mem_and_cpu_ch )
-    | set { input_file_ch }
-
-
 workflow {
+
+    all_mem_and_cpu_ch = generate_mem_and_cpu_tuples()
+
+    /*
+     * Combine input files with mem & CPU tuples
+     */
+    Channel.from(input_files)
+        | combine( all_mem_and_cpu_ch )
+        | view()
+        | set { input_file_ch }
 
 //    test_input = Channel.of( [file('../REALIGN_SAMPLE/A-CUHS-CU003128-BL-COL-49696BL1.unsorted.bam'), 1, 1] )
 //                    .view()
 //    samtools_coordinate_sort_proc( test_input )
-    samtools_coordinate_sort_proc( input_file_ch )
+//    samtools_coordinate_sort_proc( input_file_ch )
+
+     sambamba_coordinate_sort_proc( input_file_ch )
 }
 
 
@@ -148,11 +68,11 @@ process samtools_coordinate_sort_proc {
     additional_threads = task.cpus - 1
 
 
-    println ""
-    println "n CPUs: $total_cpus"
-    println "Total mem: $task.memory"
-    println "mem_per_thread: $mem_per_thread"
-    println ""
+//    println ""
+//    println "n CPUs: $total_cpus"
+//    println "Total mem: $task.memory"
+//    println "mem_per_thread: $mem_per_thread"
+//    println ""
 
     """
     samtools sort \\
@@ -163,4 +83,138 @@ process samtools_coordinate_sort_proc {
         --write-index \\
         "${bam}"
     """
+}
+
+process sambamba_coordinate_sort_proc {
+
+    tag { "${bam.baseName};CPUS:${total_cpus};MEM_PER_THREAD:${mem_per_thread}GB" }
+
+    executor='slurm'
+    queue = 'normal'
+    cpus { total_cpus }
+    memory { total_cpus * mem_per_thread.GB}
+    clusterOptions = "--time 5:00:00 --account coa_mteb223_uksr"
+
+    /*
+     * Carry on if an individual instance fails.
+     */
+    errorStrategy 'ignore'
+    
+    /* delete files upon completion (I think) */
+    /* This didn't work. */
+    // cleanup = true
+
+    afterScript 'rm *.bam*'
+
+
+    input:
+    tuple path(bam), val(total_cpus), val(mem_per_thread)
+
+    script:
+
+    avail_mem = task.memory ? task.memory.toGiga().intdiv(task.cpus) : 0
+
+//    println ""
+//    println "n CPUs: $total_cpus"
+//    println "Total mem: $task.memory"
+//    println "mem_per_thread: $mem_per_thread"
+//    println ""
+
+    """
+    sambamba sort \\
+        -t "${task.cpus}" \\
+        -m ${avail_mem}G \\
+        -o "${bam.baseName}.csorted.bam" \\
+        -l 2 \\
+        --tmpdir \$PWD \\
+        "${bam}"
+    """
+}
+
+
+
+
+def generate_mem_and_cpu_tuples() {
+
+    /*************************/
+    /* Low memory per thread */
+    /*************************/
+
+    /*
+     * Create list of CPUs and total memory to test. I want to test CPUs from 1
+     * to 17 with step size == 2. The specified value ('18') is not inclusive. I'll
+     * test memory (per thread) from 1 to 25 with step size == 2. The specified
+     * value ('26') is not inclusive.
+     */
+    low_mem_and_cpu_list = []
+    1.step(18, 2){
+        cpu ->
+            1.step(26, 2){
+                mem_per_thread -> 
+                    low_mem_and_cpu_list.add( [cpu, mem_per_thread] )
+            }
+    }
+
+    low_mem_and_cpu_ch = Channel.from( low_mem_and_cpu_list )
+
+
+
+    /****************************/
+    /* Medium memory per thread */
+    /****************************/
+
+    /*
+     * Create list of CPUs and total memory to test. I want to test CPUS from 1
+     * to 10 with step size == 3. The specified value ('11') is not inclusive. I'll
+     * test memory from 27 to 41 with step size == 3. The specified value ('42')
+     * is not inclusive.
+     */
+    med_mem_and_cpu_list = []
+    1.step(11, 3){
+        cpu ->
+            27.step(42, 3){
+                mem_per_thread ->
+                    med_mem_and_cpu_list.add( [cpu, mem_per_thread] )
+            }
+    }
+
+
+
+    med_mem_and_cpu_ch = Channel.from( med_mem_and_cpu_list )
+
+
+
+
+    /**************************/
+    /* High memory per thread */
+    /**************************/
+
+    /*
+     * Create list of CPUs and total memory to test. I want to test CPUs from 1
+     * to 4 with step size == 1. The specified value ('6') is not inclusive. I'll
+     * test memory from 60 to 100 with step size == 10. The specified value ('101')
+     * is not inclusive.
+     */
+    high_mem_and_cpu_list = []
+    1.step(5, 1){
+        cpu ->
+            60.step(101, 10){
+                mem_per_thread ->
+                    high_mem_and_cpu_list.add( [cpu, mem_per_thread] )
+            }
+    }
+
+    high_mem_and_cpu_ch = Channel.from( high_mem_and_cpu_list )
+
+
+
+    /*
+     * Concat all mem and CPU tuples
+     */
+    all_mem_and_cpu_ch = low_mem_and_cpu_ch
+        | concat( med_mem_and_cpu_ch )
+        | concat( high_mem_and_cpu_ch )
+
+    return all_mem_and_cpu_ch
+
 }
