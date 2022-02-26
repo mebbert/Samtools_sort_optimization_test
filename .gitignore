@@ -1,6 +1,7 @@
 
 # Ignore all bam and related files
 *.bam*
+.nextflow*
 
 # Ignore all of the following files
 work
