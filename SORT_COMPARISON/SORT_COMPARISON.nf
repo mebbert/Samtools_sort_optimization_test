@@ -88,6 +88,7 @@ process samtools_csort_proc {
         -@ "${additional_threads}" \\
         -m ${mem_per_thread}G \\
         -o "${bam.baseName}.csorted.bam" \\
+        -O bam \\
         -T "${bam.baseName}.csorted" \\
         --write-index \\
         "${bam}"
@@ -154,6 +155,7 @@ process Lsamtools_csort_proc {
         -@ "${additional_threads}" \\
         -m ${mem_per_thread}G \\
         -o "${bam.baseName}.csorted.bam" \\
+        -O bam \\
         -T "${bam.baseName}.csorted" \\
         --write-index \\
         "${bam}"
@@ -215,6 +217,12 @@ process sambamba_csort_proc {
         -l 2 \\
         --tmpdir \$PWD \\
         "${bam}"
+
+    sambamba index \\
+        -t "${task.cpus}" \\
+        --show-progress \\
+        "${bam.baseName}.csorted.bam"
+
     """
 }
 
